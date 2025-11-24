@@ -206,4 +206,17 @@ class UserNotificationViewModel @Inject constructor(
     fun refreshNotifications() {
         _uiState.value = UiState.Success("알림을 새로고침했습니다")
     }
+
+    val unreadNotificationsByPriority: StateFlow<Map<NotificationPriority, Int>> =
+        combine(
+            visibleNotifications,
+            readNotificationIds
+        ) { list, readIds ->
+            val unread = list.filter { it.id !in readIds }
+            mapOf(
+                NotificationPriority.HIGH to unread.count { it.priority == NotificationPriority.HIGH },
+                NotificationPriority.NORMAL to unread.count { it.priority == NotificationPriority.NORMAL },
+                NotificationPriority.LOW to unread.count { it.priority == NotificationPriority.LOW }
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 }

@@ -28,7 +28,6 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import android.widget.EditText
 import androidx.navigation.findNavController
-import androidx.navigation.fragment.findNavController
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.ktx.functions
@@ -38,20 +37,24 @@ import kotlinx.coroutines.delay
 import java.time.LocalDate
 import kotlin.math.*
 import com.google.firebase.firestore.Source
-import android.text.InputFilter
 import android.text.InputType
 import android.text.method.DigitsKeyListener
-import android.view.LayoutInflater
 import android.widget.FrameLayout
-import androidx.lifecycle.Lifecycle
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import com.google.firebase.firestore.SetOptions
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.fragment.app.viewModels
+import com.jjangdol.biorhythm.vm.UserNotificationViewModel
+import kotlinx.coroutines.flow.collectLatest
+import androidx.navigation.fragment.findNavController
+import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.jjangdol.biorhythm.data.model.NotificationPriority
+import dagger.hilt.android.AndroidEntryPoint
 
-
-class WeatherFragment : Fragment(R.layout.fragment_weather) {
+@AndroidEntryPoint
+class HomeFragment : Fragment(R.layout.fragment_weather) {
 
     private var _binding: FragmentWeatherBinding? = null
     private val binding get() = _binding!!
@@ -59,6 +62,9 @@ class WeatherFragment : Fragment(R.layout.fragment_weather) {
     private var currentLocCts: CancellationTokenSource? = null
     private val db = FirebaseFirestore.getInstance()
     private lateinit var functions: FirebaseFunctions
+
+    // 알림 확인을 위한 vm
+    private val notificationViewModel: UserNotificationViewModel by viewModels()
 
     // stn 리스트
     private var weatherStations: List<WeatherStation> = emptyList()
@@ -113,7 +119,7 @@ class WeatherFragment : Fragment(R.layout.fragment_weather) {
         fused.lastLocation
             .addOnSuccessListener { loc ->
                 if (_binding == null) {
-                    Log.w("WeatherFragment", "View already destroyed, ignoring location update")
+                    Log.w("HomeFragment", "View already destroyed, ignoring location update")
                     return@addOnSuccessListener
                 }
 
@@ -263,25 +269,16 @@ class WeatherFragment : Fragment(R.layout.fragment_weather) {
                         // 10~5월은 체감온도 미표시
                         binding.tvNowDesc.text = condition
                     }
-
-                    // ✨ 온도 기반으로 Firebase에서 지침 가져오기
-                    loadGuidelinesFromFirebase(temp)
                 } else {
                     binding.tvNowDesc.text = "$condition · 체감온도 --°"
-                    // 온도를 알 수 없으면 기본 지침 표시
-                    loadGuidelinesFromFirebase(null)
                 }
             } else {
                 Toast.makeText(requireContext(), "날씨 정보를 받아오지 못했습니다.", Toast.LENGTH_SHORT).show()
-                // 날씨 정보 실패 시에도 기본 지침 표시
-                loadGuidelinesFromFirebase(null)
             }
         } catch (e: Exception) {
             Log.e("WeatherError", "getWeatherData 호출 실패", e)
             Toast.makeText(requireContext(), "날씨 정보를 가져오는 중 오류: ${e.message}", Toast.LENGTH_LONG)
                 .show()
-            // 오류 발생 시에도 기본 지침 표시
-            loadGuidelinesFromFirebase(null)
         }
     }
 
@@ -297,127 +294,6 @@ class WeatherFragment : Fragment(R.layout.fragment_weather) {
             temp <= -12 -> "level_minus12"
             temp <= -6 -> "level_minus6"
             else -> "level_0"
-        }
-    }
-
-    /** Firebase에서 온도 기반 지침 가져오기 */
-    private fun loadGuidelinesFromFirebase(temp: Double?) {
-        val level = determineGuidelineLevel(temp)
-
-        Log.d("WeatherDebug", "온도: $temp, 선택된 레벨: $level")
-
-        db.collection("SafeGuideline")
-            .document(level)
-            .get()
-            .addOnSuccessListener { document ->
-                if (!isAdded || _binding == null) return@addOnSuccessListener
-
-                if (document.exists()) {
-                    val guidelines = document.getString("guidelines")
-                    val riskLevel = document.getString("riskLevel") ?: "보통"
-
-                    if (!guidelines.isNullOrBlank()) {
-                        displayGuidelinesFromFirebase(guidelines, riskLevel, temp)
-                    } else {
-                        // guidelines가 비어있으면 기본값 표시
-                        loadDefaultGuidelines()
-                    }
-                } else {
-                    Log.w("WeatherDebug", "문서 '$level'이 존재하지 않음. 기본 지침 표시")
-                    loadDefaultGuidelines()
-                }
-            }
-            .addOnFailureListener { e ->
-                Log.e("WeatherDebug", "Firebase 지침 로드 실패", e)
-                if (isAdded && _binding != null) {
-                    loadDefaultGuidelines()
-                }
-            }
-    }
-
-    /** Firebase에서 가져온 지침을 화면에 표시 */
-    private fun displayGuidelinesFromFirebase(guidelines: String, riskLevel: String, temp: Double?) {
-        binding.tvGuidelineTitle.text = "안전 지침"
-
-        // 온도 정보 포함한 부제목
-        val subtitle = when {
-            temp == null -> riskLevel
-            temp >= 31 -> "폭염 주의 ($riskLevel)"
-            temp <= -6 -> "한파 주의 ($riskLevel)"
-            else -> riskLevel
-        }
-        binding.tvGuidelineSubtitle.text = subtitle
-
-        // 기존 항목 비우기
-        binding.guidelineContainer.removeAllViews()
-
-        // guidelines 문자열을 " • " 기준으로 분리
-        val items = guidelines
-            .split("•")  // • 기준으로 분리
-            .map { it.trim() }  // 앞뒤 공백 제거
-            .filter { it.isNotBlank() }  // 빈 항목 제거
-
-        val pad = (8 * resources.displayMetrics.density).toInt()
-
-        items.forEach { line ->
-            val tv = android.widget.TextView(requireContext()).apply {
-                text = "•  $line"
-
-                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f)
-                setTextColor(
-                    ContextCompat.getColor(
-                        requireContext(),
-                        R.color.text_primary
-                    )
-                )
-
-                // 상/하 패딩
-                setPadding(0, pad / 2, 0, pad / 2)
-
-                // 두 번째 줄부터 들여쓰기 적용
-                val hangingIndent = (16 * resources.displayMetrics.density).toInt()
-                val spannable = android.text.SpannableString(text)
-                spannable.setSpan(
-                    android.text.style.LeadingMarginSpan.Standard(0, hangingIndent),
-                    0,
-                    text.length,
-                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                setText(spannable)
-            }
-
-            binding.guidelineContainer.addView(tv)
-        }
-    }
-
-    /** 기본 지침 표시 (Firebase 실패 시 대체) */
-    private fun loadDefaultGuidelines() {
-        binding.tvGuidelineTitle.text = "안전 지침"
-        binding.tvGuidelineSubtitle.text = "일반 작업 안전 수칙"
-
-        binding.guidelineContainer.removeAllViews()
-
-        val defaultItems = arrayOf(
-            "작업 전 안전장비를 착용하세요",
-            "주변 환경을 확인하고 작업하세요",
-            "무리한 작업은 피하고 적절히 휴식하세요",
-            "이상 증상 발생 시 즉시 보고하세요"
-        )
-
-        val pad = (8 * resources.displayMetrics.density).toInt()
-        defaultItems.forEach { line ->
-            val tv = android.widget.TextView(requireContext()).apply {
-                text = "• $line"
-                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f)
-                setTextColor(
-                    androidx.core.content.ContextCompat.getColor(
-                        requireContext(),
-                        R.color.text_primary
-                    )
-                )
-                setPadding(0, pad / 2, 0, pad / 2)
-            }
-            binding.guidelineContainer.addView(tv)
         }
     }
 
@@ -499,26 +375,26 @@ class WeatherFragment : Fragment(R.layout.fragment_weather) {
     /** 위경도를 "서울특별시 종로구 00동" 식으로 변환 (없으면 null) */
     private fun reverseGeocodeToShortName(lat: Double, lon: Double): String? {
         return try {
-            if (!Geocoder.isPresent()) return null //Geocoder 사용 가능한지 확인
+            if (!Geocoder.isPresent()) return null
 
             val g = Geocoder(requireContext(), Locale.KOREA)
-            val list: List<Address> = g.getFromLocation(lat, lon, 1) ?: emptyList() //1건만 가져옴
+            val list: List<Address> = g.getFromLocation(lat, lon, 1) ?: emptyList()
 
             if (list.isEmpty()) return null
             val a = list[0]
 
-            val wiedarea = a.locality ?: a.adminArea       // 시/도 (서울특별시, 전주시)
-            val narrowarea = a.subLocality ?: a.subAdminArea // 구 (종로구, 덕진구)
+            val wiedarea = a.locality ?: a.adminArea       // 시/도
+            val narrowarea = a.subLocality ?: a.subAdminArea // 구/군
 
-            // 동/도로명/지형지물 이름 추출
-            val thoroughfare = a.thoroughfare // 도로명 주소 또는 동 이름 (e.g., "금암동", "세종대로")
-            val featureName = a.featureName   // 지형/건물 이름 (e.g., "경복궁", "금암동")
-
+            // 동/읍/면 정보 추출
             val detailarea = when {
-                // thoroughfare에 유효한 문자열이 있고 숫자가 아니라면 (주소 정보 방지)
-                thoroughfare?.any { it.isLetter() } == true -> thoroughfare
-                // 그렇지 않다면 featureName을 사용
-                else -> featureName
+                // thoroughfare에 동/읍/면이 포함되어 있으면 사용
+                a.thoroughfare?.let { it.contains("동") || it.contains("읍") || it.contains("면") } == true
+                    -> a.thoroughfare
+                // subThoroughfare에 동/읍/면이 포함되어 있으면 사용
+                a.subThoroughfare?.let { it.contains("동") || it.contains("읍") || it.contains("면") } == true
+                    -> a.subThoroughfare
+                else -> null
             }
 
             when {
@@ -528,11 +404,11 @@ class WeatherFragment : Fragment(R.layout.fragment_weather) {
                 !wiedarea.isNullOrBlank() && !narrowarea.isNullOrBlank() ->
                     "$wiedarea $narrowarea"
 
-                !wiedarea.isNullOrBlank() && !detailarea.isNullOrBlank() -> // 구 정보가 없을 경우 대비
+                !wiedarea.isNullOrBlank() && !detailarea.isNullOrBlank() ->
                     "$wiedarea $detailarea"
 
                 !wiedarea.isNullOrBlank() -> wiedarea
-                else -> null // 모든 정보가 없을 경우
+                else -> null
             }
         } catch (_: Exception) {
             null
@@ -546,7 +422,7 @@ class WeatherFragment : Fragment(R.layout.fragment_weather) {
             android.R.color.holo_orange_light,
             android.R.color.holo_red_light
         )
-        // todo: 이 색상 코드를 삽입해야 로그인 이후에 weatherFragment를 입장한 후에 앱이 강제종료가 안 되는데, 이유는 모르겠음
+        // todo: 이 색상 코드를 삽입해야 로그인 이후에 HomeFragment를 입장한 후에 앱이 강제종료가 안 되는데, 이유는 모르겠음
 
         binding.swipeRefreshLayout.setOnRefreshListener {
             // 새로고침 시 실행할 작업
@@ -671,6 +547,10 @@ class WeatherFragment : Fragment(R.layout.fragment_weather) {
         greetUser()
         // 초기 로딩 UI 설정
         setNowSkeleton(true)
+
+        // 알림 확인 카드
+        setupNotificationCard()
+
         // 현재 위치명 시도
         updateLocationName()
 
@@ -763,7 +643,7 @@ class WeatherFragment : Fragment(R.layout.fragment_weather) {
                         val mainNavController = requireActivity().findNavController(R.id.navHostFragment)
                         mainNavController.navigate(R.id.action_main_to_newAdmin)
                     } catch (e: Exception) {
-                        Log.e("WeatherFragment", "Navigation error", e)
+                        Log.e("HomeFragment", "Navigation error", e)
                         Toast.makeText(requireContext(), "관리자 페이지로 이동할 수 없습니다", Toast.LENGTH_SHORT).show()
                     }
                 } else {
@@ -1197,4 +1077,89 @@ class WeatherFragment : Fragment(R.layout.fragment_weather) {
         }
     }
     /*************** 여기까지 기상 정보문 코드 ***************/
+
+    /**
+     * 알림 확인 코드 부분 시작 ===================================================
+     * */
+    private fun setupNotificationCard() {
+        // 읽지 않은 알림 개수 관찰
+        viewLifecycleOwner.lifecycleScope.launch {
+            notificationViewModel.unreadCount.collectLatest { count ->
+                updateNotificationCard(count)
+            }
+        }
+
+        // 우선순위별 배지 관찰 (추가)
+        viewLifecycleOwner.lifecycleScope.launch {
+            notificationViewModel.unreadNotificationsByPriority.collectLatest { priorityMap ->
+                updateNotificationBadges(priorityMap)
+            }
+        }
+
+        // 알림 카드 전체 클릭 시 NotificationFragment로 이동
+        binding.cardNotification.setOnClickListener {
+            try {
+                val bottomNav = requireActivity().findViewById<BottomNavigationView>(R.id.bottomNav)
+                bottomNav?.selectedItemId = R.id.notificationFragment
+            } catch (e: Exception) {
+                Log.e("HomeFragment-debug", "Navigation error: ${e.message}", e)
+                Toast.makeText(requireContext(), "에러: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun updateNotificationCard(unreadCount: Int) {
+        binding.apply {
+            if (unreadCount > 0) {
+                // 읽지 않은 알림이 있으면 카드 표시
+                cardNotification.visibility = View.VISIBLE
+                tvNotificationSummary.text = "읽지 않은 알림 ${unreadCount}개"
+            } else {
+                // 읽지 않은 알림이 없으면 카드 숨김
+                cardNotification.visibility = View.GONE
+            }
+        }
+    }
+
+    // 새로운 함수 추가
+    private fun updateNotificationBadges(priorityMap: Map<NotificationPriority, Int>) {
+        binding.apply {
+            val highCount = priorityMap[NotificationPriority.HIGH] ?: 0
+            val normalCount = priorityMap[NotificationPriority.NORMAL] ?: 0
+            val lowCount = priorityMap[NotificationPriority.LOW] ?: 0
+
+            // 긴급
+            chipHighBadge.apply {
+                if (highCount > 0) {
+                    visibility = View.VISIBLE
+                    text = "긴급 $highCount"
+                } else {
+                    visibility = View.GONE
+                }
+            }
+
+            // 일반
+            chipNormalBadge.apply {
+                if (normalCount > 0) {
+                    visibility = View.VISIBLE
+                    text = "일반 $normalCount"
+                } else {
+                    visibility = View.GONE
+                }
+            }
+
+            // 안내
+            chipLowBadge.apply {
+                if (lowCount > 0) {
+                    visibility = View.VISIBLE
+                    text = "안내 $lowCount"
+                } else {
+                    visibility = View.GONE
+                }
+            }
+        }
+    }
+    /**
+     * 여기까지 알림 관련 코드
+     * */
 }

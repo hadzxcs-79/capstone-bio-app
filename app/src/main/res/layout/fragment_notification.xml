@@ -26,15 +26,17 @@
             android:gravity="center_vertical">
 
             <ImageView
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:layout_marginEnd="16dp"
                 android:src="@drawable/ic_notificationbell"
-                android:tint="@color/primary_color"
-                android:layout_marginEnd="16dp" />
+                app:tint="@color/primary_color" />
 
             <LinearLayout
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="55dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="4dp"
                 android:layout_weight="1"
                 android:orientation="vertical">
 
@@ -42,31 +44,98 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="새로운 알림"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/text_primary" />
+                    android:textColor="@color/text_primary"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/tvNotificationSummary"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="읽지 않은 알림이 0개 있습니다"
-                    android:textSize="14sp"
+                    android:layout_marginTop="4dp"
+                    android:text="읽지 않은 알림 0개"
                     android:textColor="@color/text_secondary"
-                    android:layout_marginTop="4dp" />
-
+                    android:textSize="17sp" />
             </LinearLayout>
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnMarkAllRead"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
+            <!-- 우선순위별 배지 / 완료 표시 -->
+            <FrameLayout
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="모두 읽음"
-                android:textSize="14sp"
-                app:icon="@drawable/ic_check_all"
-                app:iconSize="18dp" />
+                android:layout_height="wrap_content">
 
+                <!-- 읽지 않은 알림이 있을 때 표시 -->
+                <LinearLayout
+                    android:id="@+id/notificationBadgeContainer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="end"
+                    android:visibility="gone">
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipHighBadge"
+                        style="@style/CustomChipStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="긴급 0"
+                        android:textSize="10sp"
+                        android:visibility="gone"
+                        android:clickable="false"
+                        android:focusable="false"
+                        app:chipBackgroundColor="#FFEBEE"
+                        app:chipStrokeColor="#F44336"
+                        app:chipStrokeWidth="1dp"
+                        app:chipMinHeight="22dp"
+                        app:chipStartPadding="6dp"
+                        app:chipEndPadding="6dp" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipNormalBadge"
+                        style="@style/CustomChipStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="일반 0"
+                        android:textSize="10sp"
+                        android:visibility="gone"
+                        android:clickable="false"
+                        android:focusable="false"
+                        app:chipBackgroundColor="#E3F2FD"
+                        app:chipStrokeColor="#2196F3"
+                        app:chipStrokeWidth="1dp"
+                        app:chipMinHeight="22dp"
+                        app:chipStartPadding="6dp"
+                        app:chipEndPadding="6dp" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipLowBadge"
+                        style="@style/CustomChipStyle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="안내 0"
+                        android:textSize="10sp"
+                        android:visibility="gone"
+                        android:clickable="false"
+                        android:focusable="false"
+                        app:chipBackgroundColor="#E8F5E8"
+                        app:chipStrokeColor="#4CAF50"
+                        app:chipStrokeWidth="1dp"
+                        app:chipMinHeight="22dp"
+                        app:chipStartPadding="6dp"
+                        app:chipEndPadding="6dp" />
+
+                </LinearLayout>
+
+                <!-- 모두 읽은 경우 표시 -->
+                <TextView
+                    android:id="@+id/tvAllReadBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="✓"
+                    android:textSize="32sp"
+                    android:textColor="#4CAF50"
+                    android:visibility="gone" />
+
+            </FrameLayout>
         </LinearLayout>
 
     </com.google.android.material.card.MaterialCardView>

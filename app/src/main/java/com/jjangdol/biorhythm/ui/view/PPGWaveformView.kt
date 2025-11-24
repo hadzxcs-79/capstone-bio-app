@@ -174,7 +174,6 @@ class PPGWaveformView @JvmOverloads constructor(
         }
     }
 
-    // 🔥 개선된 색상 헬퍼 함수들
     private fun getSignalColorWithAlpha(alpha: Int): Int {
         val baseColor = getSignalColor()
         return Color.argb(
@@ -295,7 +294,7 @@ class PPGWaveformView @JvmOverloads constructor(
             fillPath.lineTo(width - padding, height - padding)
             fillPath.close()
 
-            // 🔥 수정된 그라데이션 색상 설정
+            // 그라데이션 색상 설정
             val signalColor = getSignalColor()
 
             // 채우기 그라데이션 (수정됨)
@@ -313,7 +312,7 @@ class PPGWaveformView @JvmOverloads constructor(
 
             canvas.drawPath(fillPath, fillPaint)
 
-            // 🔥 수정된 글로우 효과
+            // 글로우 효과
             waveGlowPaint.color = getSignalColorWithAlpha(102) // 40% 투명도
             canvas.drawPath(wavePath, waveGlowPaint)
 
@@ -474,16 +473,6 @@ class PPGWaveformView @JvmOverloads constructor(
             }
         }
     }
-
-    /**
-     * 현재 BPM 반환
-     */
-    fun getCurrentBPM(): Int = currentBPM
-
-    /**
-     * 현재 신호 품질 반환
-     */
-    fun getSignalQuality(): SignalQuality = signalQuality
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()

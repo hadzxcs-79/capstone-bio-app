@@ -91,11 +91,6 @@ class NotificationFragment : Fragment(R.layout.fragment_notification) {
             Toast.makeText(requireContext(), "알림을 새로고침했습니다", Toast.LENGTH_SHORT).show()
         }
 
-        // 모두 읽음 처리 버튼
-        binding.btnMarkAllRead.setOnClickListener {
-            showMarkAllReadDialog()
-        }
-
         // 선택 읽음 처리 버튼
         binding.btnMarkSelectedRead.setOnClickListener {
             val selectedIds = notificationAdapter.getSelectedUnreadIds()  // 읽지 않은 것만
@@ -161,26 +156,34 @@ class NotificationFragment : Fragment(R.layout.fragment_notification) {
     }
 
     private fun observeViewModel() {
+        // notifications
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.notifications.collectLatest { notifications ->
                 notificationAdapter.submitList(notifications)
-
-                // 빈 상태 처리
                 binding.emptyLayout.visibility =
                     if (notifications.isEmpty()) View.VISIBLE else View.GONE
             }
         }
 
+        // unreadCount
         viewLifecycleOwner.lifecycleScope.launch {
             viewModel.unreadCount.collectLatest { count ->
-                binding.tvNotificationSummary.text = "읽지 않은 알림이 ${count}개 있습니다"
-
-                // 모두 읽음 버튼 활성화/비활성화
-                binding.btnMarkAllRead.isEnabled = count > 0
+                binding.tvNotificationSummary.text = if (count > 0) {
+                    "읽지 않은 알림 ${count}개"
+                } else {
+                    "모든 알림을 읽었습니다"
+                }
             }
         }
 
-        //  읽음 상태 변경 관찰 추가
+        // 우선순위별 배지
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.unreadNotificationsByPriority.collectLatest { priorityMap ->
+                updateNotificationBadges(priorityMap)
+            }
+        }
+
+        //  읽음 상태 변경 추가
         viewLifecycleOwner.lifecycleScope.launch {
             // UserNotificationRepository의 readNotificationIds Flow 관찰
             // (실제로는 UserNotificationViewModel을 통해 접근해야 함)
@@ -222,6 +225,57 @@ class NotificationFragment : Fragment(R.layout.fragment_notification) {
                         Toast.makeText(requireContext(), event.text, Toast.LENGTH_SHORT).show()
                     }
                 }
+            }
+        }
+    }
+
+    // 알림 유형별 별 뱃지
+    private fun updateNotificationBadges(priorityMap: Map<NotificationPriority, Int>) {
+        binding.apply {
+            val highCount = priorityMap[NotificationPriority.HIGH] ?: 0
+            val normalCount = priorityMap[NotificationPriority.NORMAL] ?: 0
+            val lowCount = priorityMap[NotificationPriority.LOW] ?: 0
+
+            val totalUnread = highCount + normalCount + lowCount
+
+            if (totalUnread > 0) {
+                // 읽지 않은 알림이 있음 - 배지 표시
+                notificationBadgeContainer.visibility = View.VISIBLE
+                tvAllReadBadge.visibility = View.GONE
+
+                // 긴급
+                chipHighBadge.apply {
+                    if (highCount > 0) {
+                        visibility = View.VISIBLE
+                        text = "긴급 $highCount"
+                    } else {
+                        visibility = View.GONE
+                    }
+                }
+
+                // 일반
+                chipNormalBadge.apply {
+                    if (normalCount > 0) {
+                        visibility = View.VISIBLE
+                        text = "일반 $normalCount"
+                    } else {
+                        visibility = View.GONE
+                    }
+                }
+
+                // 안내
+                chipLowBadge.apply {
+                    if (lowCount > 0) {
+                        visibility = View.VISIBLE
+                        text = "안내 $lowCount"
+                    } else {
+                        visibility = View.GONE
+                    }
+                }
+            } else {
+                // 모두 읽음 - 체크 표시
+                notificationBadgeContainer.visibility = View.GONE
+                tvAllReadBadge.visibility = View.VISIBLE
             }
         }
     }

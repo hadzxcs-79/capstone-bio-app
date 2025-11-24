@@ -3,7 +3,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/bottom_nav_graph"
-    app:startDestination="@id/weatherFragment">
+    app:startDestination="@id/HomeFragment">
 
     <!-- 1) 알림 -->
     <fragment
@@ -52,8 +52,8 @@
 
     <!-- 4) 기상 정보 -->
     <fragment
-        android:id="@+id/weatherFragment"
-        android:name="com.jjangdol.biorhythm.ui.weather.WeatherFragment"
+        android:id="@+id/HomeFragment"
+        android:name="com.jjangdol.biorhythm.ui.weather.HomeFragment"
         android:label="기상정보" />
 
     <!-- 5) 기록 보기 -->

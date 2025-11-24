@@ -479,12 +479,27 @@ class PPGMeasurementFragment : BaseMeasurementFragment() {
     private fun analyzeCompleteMeasurement() {
         lifecycleScope.launch {
             updateState(MeasurementState.InProgress(100f))
-            binding.tvInstruction.text = "신호 분석 중..."
 
+            // UI 업데이트 (메인 스레드)
+            withContext(Dispatchers.Main) {
+                binding.apply {
+                    tvInstruction.text = "측정 완료"
+                    tvInstruction.setTextColor(requireContext().getColor(R.color.primary_color))
+
+                    // 측정 카드 전체 숨기기
+                    measurementCard.visibility = View.GONE
+
+                    progressBar.visibility = View.GONE
+                    tvProgress.visibility = View.GONE
+                }
+            }
+
+            // 신호 분석 (백그라운드)
             val result = withContext(Dispatchers.Default) {
                 processCompleteSignalWithMedicalStandards()
             }
 
+            // 결과 표시 (메인 스레드)
             displayImprovedResults(result)
         }
     }
@@ -1012,6 +1027,7 @@ class PPGMeasurementFragment : BaseMeasurementFragment() {
                 progressBar.visibility = View.GONE
                 tvProgress.visibility = View.GONE
                 measurementInfo.visibility = View.GONE
+                measurementCard.visibility = View.GONE
                 resultCard.visibility = View.VISIBLE
                 initialButtons.visibility = View.GONE
                 resultButtons.visibility = View.VISIBLE
@@ -1305,16 +1321,27 @@ class PPGMeasurementFragment : BaseMeasurementFragment() {
             btnStart.isEnabled = true
             progressBar.visibility = View.GONE
             tvProgress.visibility = View.GONE
+
+            // 측정 카드와 내부 요소들 다시 보이기
+            measurementCard.visibility = View.VISIBLE
+            fingerGuideCard.visibility = View.VISIBLE
+            waveformCard.visibility = View.VISIBLE
+            measurementInfoCard.visibility = View.VISIBLE
             measurementInfo.visibility = View.VISIBLE
+
             resultCard.visibility = View.GONE
             initialButtons.visibility = View.VISIBLE
             resultButtons.visibility = View.GONE
+
             tvInstruction.text = "카메라에 손가락을 올려주세요"
             tvInstruction.setTextColor(requireContext().getColor(R.color.text_primary))
             tvTimer.text = "10초"
             tvSignalQuality.text = "준비 중"
             fingerGuideImage.visibility = View.VISIBLE
             tvWorkFitness.visibility = View.GONE
+
+            // 파형뷰 초기화 (있다면)
+            ppgWaveformView?.clear()
         }
     }
 

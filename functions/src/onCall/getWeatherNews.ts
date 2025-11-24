@@ -7,6 +7,25 @@ import fetch from "node-fetch";
 const db = admin.firestore();
 const weatherAlertKey = defineSecret("WEATHER_ALERT_KEY");
 
+// 특보 타입 추출 함수 (예: "강풍주의보", "풍랑주의보")
+function extractAlertTypes(title: string): string[] {
+  const match = title.match(/\/(.*?)\s+(발표|해제)/);
+  if (!match) return [];
+
+  const alertText = match[1];
+  // "강풍주의보·풍랑주의보" 형태를 ["강풍주의보", "풍랑주의보"]로 분리
+  return alertText.split('·').map(type => type.trim());
+}
+
+// 발표/해제 여부 판단
+function isIssued(title: string): boolean {
+  return title.includes('발표');
+}
+
+function isCancelled(title: string): boolean {
+  return title.includes('해제');
+}
+
 export const getWeatherNews = onCall({ secrets: [weatherAlertKey] }, async (request) => {
   const { STN_ID } = request.data;
 
@@ -24,35 +43,13 @@ export const getWeatherNews = onCall({ secrets: [weatherAlertKey] }, async (requ
   const year = kstNow.getFullYear();
   const month = String(kstNow.getMonth() + 1).padStart(2, '0');
   const day = String(kstNow.getDate()).padStart(2, '0');
-  const hours = String(kstNow.getHours()).padStart(2, '0');
-  const minutes = String(Math.floor(kstNow.getMinutes() / 10) * 10).padStart(2, '0');
-
-  const currentUpdateTime = `${year}${month}${day}${hours}${minutes}`;
   const currentDate = `${year}${month}${day}`;
 
   const docId = String(STN_ID);
   const weatherNewsDocRef = db.collection("weatherNews").doc(docId);
 
-  try {
-    const docSnap = await weatherNewsDocRef.get();
-    if (docSnap.exists) {
-      const existingData = docSnap.data();
-      if (existingData?.lastUpdateTime) {
-        const existingDate = existingData.lastUpdateTime.substring(0, 8);
-        if (existingDate !== currentDate) {
-          logger.info(`[문서 삭제] 날짜가 다름, 기존: ${existingDate}, 현재: ${currentDate}`);
-          await weatherNewsDocRef.delete();
-        } else if (currentUpdateTime <= existingData.lastUpdateTime) {
-          logger.info(`[캐시 반환] 최신 데이터 존재, STN_ID=${STN_ID}, lastUpdateTime=${existingData.lastUpdateTime}`);
-          return { status: "success", source: "cache", data: existingData.data };
-        }
-      }
-    }
-  } catch (error) {
-    logger.warn("Firestore 캐시 확인 중 오류 발생:", error);
-  }
-
-  const url = `http://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrInfo?serviceKey=${weatherAlertKey.value()}&numOfRows=20&pageNo=1&stnId=${STN_ID}&dataType=JSON`;
+  // API 호출
+  const url = `https://apis.data.go.kr/1360000/WthrWrnInfoService/getWthrWrnList?serviceKey=${weatherAlertKey.value()}&numOfRows=20&pageNo=1&stnId=${STN_ID}&dataType=JSON`;
   logger.info(`API 요청 URL: ${url}`);
 
   try {
@@ -75,21 +72,87 @@ export const getWeatherNews = onCall({ secrets: [weatherAlertKey] }, async (requ
 
     const itemArray = Array.isArray(items) ? items : [items];
 
-    const processedData = itemArray.map(item => ({
-      text: item.t1,
-      date: item.tmFc
-    }));
+    // 기존 데이터 가져오기
+    let existingData: any = { issued: {}, cancelled: {} };
+    try {
+      const docSnap = await weatherNewsDocRef.get();
+      if (docSnap.exists) {
+        existingData = docSnap.data() || { issued: {}, cancelled: {} };
 
-    logger.info(`API로부터 새로운 데이터 수신: ${processedData.length}건`);
+        // 해제 데이터 중 날짜가 다른 것 제거
+        if (existingData.cancelled) {
+          Object.keys(existingData.cancelled).forEach(key => {
+            const cancelledDate = existingData.cancelled[key].date.substring(0, 8);
+            if (cancelledDate !== currentDate) {
+              delete existingData.cancelled[key];
+              logger.info(`[해제 데이터 삭제] 날짜 지남: ${key}`);
+            }
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn("Firestore 데이터 확인 중 오류 발생:", error);
+    }
 
-    await weatherNewsDocRef.set({
-      data: processedData,
-      lastUpdateTime: currentUpdateTime
-    });
+    // 초기화 (없을 경우 대비)
+    if (!existingData.issued) existingData.issued = {};
+    if (!existingData.cancelled) existingData.cancelled = {};
 
-    logger.info(`Firestore 저장 완료: STN_ID=${STN_ID}, updateTime=${currentUpdateTime}`);
+    // API 데이터 처리
+    for (const item of itemArray) {
+      const title = item.title;
+      const alertTypes = extractAlertTypes(title);
+      const dateStr = String(item.tmFc);
 
-    return { status: "success", source: "api", data: processedData };
+      if (isIssued(title)) {
+        // 발표: 각 특보 타입별로 저장
+        alertTypes.forEach(alertType => {
+          existingData.issued[alertType] = {
+            title: title,
+            date: dateStr,
+            tmSeq: item.tmSeq
+          };
+
+          // 발표되면 해당 특보의 해제 정보는 삭제
+          if (existingData.cancelled[alertType]) {
+            delete existingData.cancelled[alertType];
+            logger.info(`[해제 데이터 삭제] 재발표됨: ${alertType}`);
+          }
+
+          logger.info(`[발표 저장] ${alertType}: ${title}`);
+        });
+      } else if (isCancelled(title)) {
+        // 해제: 해당 특보 타입들을 발표에서 제거하고 해제에 추가
+        alertTypes.forEach(alertType => {
+          if (existingData.issued[alertType]) {
+            delete existingData.issued[alertType];
+            logger.info(`[발표 데이터 삭제] ${alertType} 해제됨`);
+          }
+
+          existingData.cancelled[alertType] = {
+            title: title,
+            date: dateStr,
+            tmSeq: item.tmSeq
+          };
+          logger.info(`[해제 저장] ${alertType}: ${title}`);
+        });
+      }
+    }
+
+    // Firestore에 저장
+    await weatherNewsDocRef.set(existingData);
+    logger.info(`Firestore 저장 완료: STN_ID=${STN_ID}`);
+
+    // 클라이언트에 반환할 데이터 구성
+    const responseData = {
+      issued: Object.values(existingData.issued),
+      cancelled: Object.values(existingData.cancelled)
+    };
+
+    return {
+      status: "success",
+      data: responseData
+    };
 
   } catch (error) {
     logger.error("getWeatherNews 함수 실행 중 오류:", error);

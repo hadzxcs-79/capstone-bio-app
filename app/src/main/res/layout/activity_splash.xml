@@ -10,6 +10,7 @@
         android:layout_width="200dp"
         android:layout_height="200dp"
         android:src="@drawable/kesco_logo"
+        android:scaleType="fitCenter"
         android:contentDescription="KESCO Logo"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"

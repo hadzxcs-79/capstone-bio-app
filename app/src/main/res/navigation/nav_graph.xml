@@ -46,7 +46,7 @@
             app:destination="@id/historyFragment" />
         <action
             android:id="@+id/action_main_to_weather"
-            app:destination="@id/weatherFragment" />
+            app:destination="@id/HomeFragment" />
         <action
             android:id="@+id/action_main_to_newAdmin"
             app:destination="@id/newAdminFragment" />
@@ -261,12 +261,17 @@
 
     <!-- 14. 기상 정보 화면 -->
     <fragment
-        android:id="@+id/weatherFragment"
-        android:name="com.jjangdol.biorhythm.ui.weather.WeatherFragment"
+        android:id="@+id/HomeFragment"
+        android:name="com.jjangdol.biorhythm.ui.weather.HomeFragment"
         android:label="기상 정보"
         tools:layout="@layout/fragment_weather">
+
         <action
-            android:id="@+id/action_weatherFragment_to_newAdminFragment"
+            android:id="@+id/action_HomeFragment_to_notificationFragment"
+            app:destination="@id/notificationFragment" />
+
+        <action
+            android:id="@+id/action_HomeFragment_to_newAdminFragment"
             app:destination="@id/newAdminFragment" />
     </fragment>
 
