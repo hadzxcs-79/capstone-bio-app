@@ -1,4 +1,3 @@
-// app/src/main/java/com/jjangdol/biorhythm/data/ResultsRepository.kt
 package com.jjangdol.biorhythm.data
 
 import android.content.Context
@@ -24,64 +23,53 @@ class ResultsRepository @Inject constructor(
 ) {
     private val fmt = DateTimeFormatter.ISO_DATE
 
-    /** 특정 날짜의 결과 리스트를 실시간 스트리밍 (부서 필터링 포함) */
+    /**
+     * 특정 날짜의 결과 리스트를 실시간 스트리밍 (부서 필터링 포함)
+     * 동일 부서에 한해 필터링됨
+     * */
     fun watchResultsByDate(date: LocalDate, context: Context): Flow<List<ChecklistResult>> = callbackFlow {
-        val TAG = "watchResultsByDate"
-        Log.d(TAG, "=== Flow 시작 ===")
-
         val prefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
         val myDeptStr = prefs.getString("dept", "") ?: ""
-        Log.d(TAG, "내 부서: '$myDeptStr'")
 
         if (myDeptStr.isEmpty() || myDeptStr == "미등록") {
-            Log.d(TAG, "부서 없음 - 빈 리스트 반환")
             trySend(emptyList())
-            awaitClose {
-                Log.d(TAG, "awaitClose (부서 없음)")
-            }
+            awaitClose { }
             return@callbackFlow
         }
 
         val dateString = date.format(fmt)
-        Log.d(TAG, "조회 날짜: $dateString")
 
-        val col = db.collection("results")
+        val query = db.collection("results")
             .document(dateString)
             .collection("entries")
-        Log.d(TAG, "Firestore 경로: results/$dateString/entries")
+            .whereEqualTo("dept", myDeptStr)
 
-        val sub = col.addSnapshotListener { snap, e ->
-            Log.d(TAG, "--- SnapshotListener 트리거 ---")
+        val sub = query.addSnapshotListener { snap, e ->
 
             if (e != null) {
-                Log.e(TAG, "Firestore 에러", e)
                 close(e)
                 return@addSnapshotListener
             }
 
             if (snap == null || snap.isEmpty) {
-                Log.d(TAG, "데이터 없음")
                 trySend(emptyList())
                 return@addSnapshotListener
             }
 
-            Log.d(TAG, "문서 개수: ${snap.documents.size}")
-
             val allResults = snap.documents.mapNotNull { ds ->
                 try {
                     val data = ds.data ?: return@mapNotNull null
-                    val deptRaw = data["dept"]
-                    val dept = when (deptRaw) {
-                        is String -> deptRaw
-                        is List<*> -> deptRaw.filterIsInstance<String>().joinToString("/")
-                        else -> ""
-                    }
+
+                    // 문서 ID에서 사번과 횟수 추출 (예: "001660_1")
+                    val docId = ds.id
+                    val attemptNumber = docId.substringAfterLast("_", "1").toIntOrNull() ?: 1
 
                     ChecklistResult(
-                        userId = data["userId"] as? String ?: "",
+                        userId = data["empNum"] as? String ?: data["userId"] as? String ?: "",
                         name = data["name"] as? String ?: "",
-                        dept = dept,
+                        dept = data["dept"] as? String ?: "",
                         date = data["date"] as? String ?: "",
+                        time = data["time"] as? String ?: "",
                         checklistScore = (data["checklistScore"] as? Number)?.toInt() ?: 0,
                         finalScore = (data["finalScore"] as? Number)?.toInt() ?: 0,
                         finalSafetyScore = (data["finalSafetyScore"] as? Number)?.toInt() ?: 0,
@@ -93,21 +81,14 @@ class ResultsRepository @Inject constructor(
                         timestamp = (data["timestamp"] as? Long) ?: 0
                     )
                 } catch (e: Exception) {
-                    Log.e(TAG, "파싱 실패: ${ds.id}", e)
                     null
                 }
-            }
+            }.sortedByDescending { it.timestamp }
 
-            val filteredResults = allResults.filter { result ->
-                result.dept.startsWith(myDeptStr)
-            }
-
-            Log.d(TAG, "필터링 결과: ${filteredResults.size}개")
-            trySend(filteredResults)
+            trySend(allResults)
         }
 
         awaitClose {
-            Log.d(TAG, "리스너 제거")
             sub.remove()
         }
     }

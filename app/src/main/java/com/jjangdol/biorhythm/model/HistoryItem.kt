@@ -5,6 +5,8 @@ import java.time.format.DateTimeFormatter
 
 data class HistoryItem(
     val date: String = "",
+    val time: String = "",
+    val documentId: String = "",
     val checklistScore: Int = 0,
     val tremorScore: Float = 0f,
     val pupilScore: Float = 0f,

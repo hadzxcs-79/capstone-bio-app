@@ -63,11 +63,11 @@ class HistoryFragment : Fragment(R.layout.fragment_history) {
     }
 
     private fun setupRecyclerView() {
-        historyAdapter = HistoryAdapter { historyItem ->
+        historyAdapter = HistoryAdapter { historyItem, documentId ->
             try {
-                Log.d("History-Log", "record_date: ${historyItem.date}")
                 val bundle = Bundle().apply {
                     putString("recordDate", historyItem.date)
+                    putString("documentId", documentId)  // 문서 ID
                 }
                 findNavController().navigate(
                     R.id.action_history_to_result,
@@ -165,57 +165,46 @@ class HistoryFragment : Fragment(R.layout.fragment_history) {
             return
         }
 
-        Log.d("History-Log", "userId: $empNum")
-
         binding.progressBar.visibility = View.VISIBLE
         binding.recyclerView.visibility = View.GONE
         binding.emptyLayout.visibility = View.GONE
 
-        // Firestore에서 모든 daily 문서를 가져오기
-        db.collection("results")
-            .document(empNum)
-            .collection("daily")
+        // Collection Group Query로 해당 사용자의 모든 측정 결과 조회
+        db.collectionGroup("entries")
+            .whereEqualTo("empNum", empNum)
             .get()
             .addOnSuccessListener { documents ->
                 allHistoryItems.clear()
 
-                println("DEBUG: Found ${documents.size()} documents") // 디버그 로그
-
-                for (document in documents) {
+                val allItems = documents.mapNotNull { document ->
                     try {
-                        println("DEBUG: Processing document: ${document.id}") // 디버그 로그
+                        val date = document.getString("date") ?: return@mapNotNull null
+                        val time = document.getString("time") ?: ""
+                        val timestamp = document.getLong("timestamp") ?: 0L
+                        val documentId = document.id
 
-                        val historyItem = HistoryItem(
-                            date = document.id, // 문서 ID가 날짜 (예: 2025-06-02)
-                            checklistScore = document.getLong("checklistScore")?.toInt() ?: 0,
-                            tremorScore = document.getDouble("tremorScore")?.toFloat() ?: 0f,
-                            pupilScore = document.getDouble("pupilScore")?.toFloat() ?: 0f,
-                            ppgScore = document.getDouble("ppgScore")?.toFloat() ?: 0f,
-                            finalSafetyScore = document.getDouble("finalSafetyScore")?.toFloat() ?: 0f,
+                        HistoryItem(
+                            date = date,
+                            time = time,
+                            documentId = documentId,
+                            checklistScore = (document.get("checklistScore") as? Number)?.toInt() ?: 0,
+                            tremorScore = (document.get("tremorScore") as? Number)?.toFloat() ?: 0f,
+                            pupilScore = (document.get("pupilScore") as? Number)?.toFloat() ?: 0f,
+                            ppgScore = (document.get("ppgScore") as? Number)?.toFloat() ?: 0f,
+                            finalSafetyScore = (document.get("finalSafetyScore") as? Number)?.toFloat() ?: 0f,
                             safetyLevel = document.getString("safetyLevel") ?: "CAUTION",
                             recommendations = document.get("recommendations") as? List<String> ?: emptyList(),
-                            timestamp = document.getLong("timestamp") ?: 0L
+                            timestamp = timestamp
                         )
-
-                        println("DEBUG: Added item for date: ${historyItem.date}, score: ${historyItem.finalSafetyScore}") // 디버그 로그
-                        allHistoryItems.add(historyItem)
-
                     } catch (e: Exception) {
-                        println("DEBUG: Error parsing document ${document.id}: ${e.message}")
-                        // 데이터 파싱 오류 무시하고 계속 진행
+                        null
                     }
                 }
 
-                // 날짜순으로 정렬 (최신순)
-                allHistoryItems.sortByDescending {
-                    try {
-                        LocalDate.parse(it.date, dateFormatter)
-                    } catch (e: Exception) {
-                        LocalDate.MIN // 파싱 실패시 가장 오래된 날짜로 처리
-                    }
-                }
+                allHistoryItems.addAll(allItems)
 
-                println("DEBUG: Total items loaded: ${allHistoryItems.size}") // 디버그 로그
+                // 시간순으로 정렬 (최신순)
+                allHistoryItems.sortByDescending { it.timestamp }
 
                 applyFilters()
                 binding.progressBar.visibility = View.GONE
@@ -223,23 +212,18 @@ class HistoryFragment : Fragment(R.layout.fragment_history) {
                 if (filteredItems.isEmpty()) {
                     binding.emptyLayout.visibility = View.VISIBLE
                     binding.recyclerView.visibility = View.GONE
-                    println("DEBUG: No items to display after filtering")
                 } else {
                     binding.emptyLayout.visibility = View.GONE
                     binding.recyclerView.visibility = View.VISIBLE
-                    println("DEBUG: Displaying ${filteredItems.size} items")
                 }
             }
             .addOnFailureListener { exception ->
-                println("DEBUG: Firestore query failed: ${exception.message}")
                 binding.progressBar.visibility = View.GONE
                 binding.emptyLayout.visibility = View.VISIBLE
                 binding.recyclerView.visibility = View.GONE
                 Toast.makeText(requireContext(), "기록을 불러오는데 실패했습니다: ${exception.message}", Toast.LENGTH_LONG).show()
             }
-    }
-
-    private fun applyFilters() {
+    }    private fun applyFilters() {
         filteredItems.clear()
 
         for (item in allHistoryItems) {

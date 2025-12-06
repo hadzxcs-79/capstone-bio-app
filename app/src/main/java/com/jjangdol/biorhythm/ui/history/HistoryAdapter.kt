@@ -12,7 +12,7 @@ import com.jjangdol.biorhythm.model.HistoryItem
 import com.jjangdol.biorhythm.model.SafetyLevel
 
 class HistoryAdapter(
-    private val onItemClick: (HistoryItem) -> Unit
+    private val onItemClick: (HistoryItem, String) -> Unit
 ) : ListAdapter<HistoryItem, HistoryAdapter.HistoryViewHolder>(DiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): HistoryViewHolder {
@@ -34,6 +34,7 @@ class HistoryAdapter(
             binding.apply {
                 // 날짜 설정
                 tvDate.text = item.formattedDate
+                tvTime.text = item.time
 
                 // 안전도 설정
                 val safetyLevel = item.safetyLevelEnum
@@ -76,9 +77,9 @@ class HistoryAdapter(
                     "-"
                 }
 
-                // 클릭 이벤트
+                // 클릭 이벤트 - documentId 함께 전달
                 root.setOnClickListener {
-                    onItemClick(item)
+                    onItemClick(item, item.documentId)
                 }
             }
         }
@@ -86,7 +87,7 @@ class HistoryAdapter(
 
     private class DiffCallback : DiffUtil.ItemCallback<HistoryItem>() {
         override fun areItemsTheSame(oldItem: HistoryItem, newItem: HistoryItem): Boolean {
-            return oldItem.date == newItem.date
+            return oldItem.documentId == newItem.documentId  // documentId로 비교
         }
 
         override fun areContentsTheSame(oldItem: HistoryItem, newItem: HistoryItem): Boolean {

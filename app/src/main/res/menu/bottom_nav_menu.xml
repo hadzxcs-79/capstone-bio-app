@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- TODO: id명을 변경해야 할 거 같은데 다른 파일들까지 건드려야 할 거 같아서 나중에 해결 -->
     <item
         android:id="@+id/HomeFragment"
         android:icon="@drawable/ic_home"

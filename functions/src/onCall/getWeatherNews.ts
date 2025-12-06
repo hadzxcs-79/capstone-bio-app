@@ -7,14 +7,10 @@ import fetch from "node-fetch";
 const db = admin.firestore();
 const weatherAlertKey = defineSecret("WEATHER_ALERT_KEY");
 
-// 특보 타입 추출 함수 (예: "강풍주의보", "풍랑주의보")
-function extractAlertTypes(title: string): string[] {
-  const match = title.match(/\/(.*?)\s+(발표|해제)/);
-  if (!match) return [];
-
-  const alertText = match[1];
-  // "강풍주의보·풍랑주의보" 형태를 ["강풍주의보", "풍랑주의보"]로 분리
-  return alertText.split('·').map(type => type.trim());
+// 특보 번호 추출 함수
+function extractAlertNumber(title: string): string | null {
+  const match = title.match(/\[특보\]\s+제(\d+-\d+)호/);
+  return match ? `특보_${match[1]}` : null;
 }
 
 // 발표/해제 여부 판단
@@ -101,41 +97,43 @@ export const getWeatherNews = onCall({ secrets: [weatherAlertKey] }, async (requ
     // API 데이터 처리
     for (const item of itemArray) {
       const title = item.title;
-      const alertTypes = extractAlertTypes(title);
+      const alertNumber = extractAlertNumber(title);
       const dateStr = String(item.tmFc);
 
+      if (!alertNumber) {
+        logger.warn(`특보 번호를 추출할 수 없습니다: ${title}`);
+        continue;
+      }
+
       if (isIssued(title)) {
-        // 발표: 각 특보 타입별로 저장
-        alertTypes.forEach(alertType => {
-          existingData.issued[alertType] = {
-            title: title,
-            date: dateStr,
-            tmSeq: item.tmSeq
-          };
+        // 발표: 특보 번호를 키로 사용
+        existingData.issued[alertNumber] = {
+          title: title,
+          date: dateStr,
+          tmSeq: item.tmSeq
+        };
 
-          // 발표되면 해당 특보의 해제 정보는 삭제
-          if (existingData.cancelled[alertType]) {
-            delete existingData.cancelled[alertType];
-            logger.info(`[해제 데이터 삭제] 재발표됨: ${alertType}`);
-          }
+        // 발표되면 해당 특보 번호의 해제 정보는 삭제
+        if (existingData.cancelled[alertNumber]) {
+          delete existingData.cancelled[alertNumber];
+          logger.info(`[해제 데이터 삭제] 재발표됨: ${alertNumber}`);
+        }
 
-          logger.info(`[발표 저장] ${alertType}: ${title}`);
-        });
+        logger.info(`[발표 저장] ${alertNumber}: ${title}`);
+
       } else if (isCancelled(title)) {
-        // 해제: 해당 특보 타입들을 발표에서 제거하고 해제에 추가
-        alertTypes.forEach(alertType => {
-          if (existingData.issued[alertType]) {
-            delete existingData.issued[alertType];
-            logger.info(`[발표 데이터 삭제] ${alertType} 해제됨`);
-          }
+        // 해제: 해당 특보 번호를 발표에서 제거하고 해제에 추가
+        if (existingData.issued[alertNumber]) {
+          delete existingData.issued[alertNumber];
+          logger.info(`[발표 데이터 삭제] ${alertNumber} 해제됨`);
+        }
 
-          existingData.cancelled[alertType] = {
-            title: title,
-            date: dateStr,
-            tmSeq: item.tmSeq
-          };
-          logger.info(`[해제 저장] ${alertType}: ${title}`);
-        });
+        existingData.cancelled[alertNumber] = {
+          title: title,
+          date: dateStr,
+          tmSeq: item.tmSeq
+        };
+        logger.info(`[해제 저장] ${alertNumber}: ${title}`);
       }
     }
 

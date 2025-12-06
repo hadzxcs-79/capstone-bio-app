@@ -42,7 +42,6 @@ class ResultFragment : Fragment(R.layout.fragment_result) {
     lateinit var userRepository: UserRepository
 
     private val db = Firebase.firestore
-    private val dateFormatter = DateTimeFormatter.ISO_DATE
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -50,43 +49,31 @@ class ResultFragment : Fragment(R.layout.fragment_result) {
 
         val sessionId = args.sessionId
         val recordDate = arguments?.getString("recordDate")
+        val documentId = arguments?.getString("documentId")  // 추가
 
         if (sessionId != null) {
-            // 측정 후 결과 표시 - Flow로부터 즉시 값 가져오기
             val session = safetyCheckViewModel.currentSession.value
             if (session != null) {
                 displaySessionResults(session)
-            } else {
-                Toast.makeText(requireContext(), "세션 데이터를 찾을 수 없습니다", Toast.LENGTH_SHORT).show()
             }
-        } else if (recordDate != null) {
-            // 특정 날짜 결과 조회 (History에서 온 경우)
-            loadResultsByDate(recordDate)
-        } else {
-            // 오늘 결과 조회 (바텀네비에서 직접 온 경우)
-            loadTodayResults()
+        } else if (recordDate != null && documentId != null) {
+            loadResultsByDateAndId(recordDate, documentId)  // 수정
         }
 
         setupButtons()
     }
 
-    private fun loadResultsByDate(date: String) {
-        val empNum = getUserEmpNum()
-        if (empNum == null) {
-            Toast.makeText(requireContext(), "사용자 정보를 찾을 수 없습니다", Toast.LENGTH_SHORT).show()
-            return
-        }
-
+    private fun loadResultsByDateAndId(date: String, documentId: String) {
         db.collection("results")
-            .document(empNum)
-            .collection("daily")
-            .document(date)  // 전달받은 날짜로 조회
+            .document(date)
+            .collection("entries")
+            .document(documentId)
             .get()
             .addOnSuccessListener { document ->
                 if (document.exists()) {
                     displayResults(document)
                 } else {
-                    Toast.makeText(requireContext(), "해당 날짜의 결과가 없습니다", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "해당 결과를 찾을 수 없습니다", Toast.LENGTH_SHORT).show()
                 }
             }
             .addOnFailureListener {
@@ -144,32 +131,6 @@ class ResultFragment : Fragment(R.layout.fragment_result) {
         } else {
             null
         }
-    }
-
-    private fun loadTodayResults() {
-        val empNum = getUserEmpNum()
-        if (empNum == null) {
-            Toast.makeText(requireContext(), "사용자 정보를 찾을 수 없습니다", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val today = LocalDate.now().format(dateFormatter)
-
-        db.collection("results")
-            .document(empNum)
-            .collection("daily")
-            .document(today)
-            .get()
-            .addOnSuccessListener { document ->
-                if (document.exists()) {
-                    displayResults(document)
-                } else {
-                    Toast.makeText(requireContext(), "오늘의 결과가 없습니다", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .addOnFailureListener {
-                Toast.makeText(requireContext(), "결과 로드 실패", Toast.LENGTH_SHORT).show()
-            }
     }
 
     private fun displayResults(document: com.google.firebase.firestore.DocumentSnapshot) {

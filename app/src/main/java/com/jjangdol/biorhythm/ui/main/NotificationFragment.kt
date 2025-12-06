@@ -280,8 +280,6 @@ class NotificationFragment : Fragment(R.layout.fragment_notification) {
         }
     }
 
-    // todo 미리보기 구현
-
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
 
     private fun isImageUrl(url: String): Boolean {

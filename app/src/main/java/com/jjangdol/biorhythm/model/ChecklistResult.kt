@@ -9,6 +9,7 @@ data class ChecklistResult(
     val name: String = "",
     val dept: String = "",
     val date: String = "",
+    val time: String = "",
 
     // 점수 관련
     val checklistScore: Int = 0,

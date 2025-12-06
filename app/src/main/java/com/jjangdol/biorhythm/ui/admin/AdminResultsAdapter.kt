@@ -1,55 +1,52 @@
-// app/src/main/java/com/jjangdol/biorhythm/ui/admin/AdminResultsAdapter.kt
 package com.jjangdol.biorhythm.ui.admin
 
+import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import android.widget.TextView
-import com.jjangdol.biorhythm.model.ChecklistResult
+import com.jjangdol.biorhythm.databinding.ItemUserStatisticsBinding
+import com.jjangdol.biorhythm.model.UserStatistics
 
 class AdminResultsAdapter(
-    private val onItemClick: (ChecklistResult) -> Unit
-) : ListAdapter<ChecklistResult, AdminResultsAdapter.ResultViewHolder>(ResultDiffCallback()) {
+    private val onItemClick: (UserStatistics) -> Unit
+) : ListAdapter<UserStatistics, AdminResultsAdapter.UserStatisticsViewHolder>(StatisticsDiffCallback()) {
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ResultViewHolder {
-        val textView = TextView(parent.context).apply {
-            setPadding(32, 24, 32, 24)
-            textSize = 16f
-            setBackgroundResource(android.R.drawable.list_selector_background)
-        }
-        return ResultViewHolder(textView)
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): UserStatisticsViewHolder {
+        val binding = ItemUserStatisticsBinding.inflate(
+            LayoutInflater.from(parent.context),
+            parent,
+            false
+        )
+        return UserStatisticsViewHolder(binding)
     }
 
-    override fun onBindViewHolder(holder: ResultViewHolder, position: Int) {
+    override fun onBindViewHolder(holder: UserStatisticsViewHolder, position: Int) {
         holder.bind(getItem(position))
     }
 
-    inner class ResultViewHolder(private val textView: TextView) : RecyclerView.ViewHolder(textView) {
+    inner class UserStatisticsViewHolder(
+        private val binding: ItemUserStatisticsBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(item: ChecklistResult) {
-            textView.apply {
-                //text = "${item.name} (${item.dept}) - ${item.finalSafetyScore}점"
-                text = "${item.name} - ${item.finalSafetyScore}점"
+        fun bind(item: UserStatistics) {
+            binding.apply {
+                tvUserName.text = item.userName
+                tvDangerCount.text = item.dangerCount.toString()
+                tvCautionCount.text = item.cautionCount.toString()
+                tvSafeCount.text = item.safeCount.toString()
 
-                // 점수에 따른 색상 변경
-                setTextColor(when {
-                    item.finalSafetyScore < 50 -> android.graphics.Color.RED
-                    item.finalSafetyScore < 70 -> android.graphics.Color.parseColor("#FF9800")
-                    else -> android.graphics.Color.parseColor("#4CAF50")
-                })
-
-                setOnClickListener { onItemClick(item) }
+                root.setOnClickListener { onItemClick(item) }
             }
         }
     }
 
-    class ResultDiffCallback : DiffUtil.ItemCallback<ChecklistResult>() {
-        override fun areItemsTheSame(oldItem: ChecklistResult, newItem: ChecklistResult): Boolean {
-            return oldItem.userId == newItem.userId && oldItem.date == newItem.date
+    class StatisticsDiffCallback : DiffUtil.ItemCallback<UserStatistics>() {
+        override fun areItemsTheSame(oldItem: UserStatistics, newItem: UserStatistics): Boolean {
+            return oldItem.userId == newItem.userId
         }
 
-        override fun areContentsTheSame(oldItem: ChecklistResult, newItem: ChecklistResult): Boolean {
+        override fun areContentsTheSame(oldItem: UserStatistics, newItem: UserStatistics): Boolean {
             return oldItem == newItem
         }
     }

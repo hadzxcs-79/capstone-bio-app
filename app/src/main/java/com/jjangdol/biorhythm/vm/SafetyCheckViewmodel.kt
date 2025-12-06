@@ -22,6 +22,7 @@ import kotlinx.coroutines.tasks.await
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -265,10 +266,10 @@ class SafetyCheckViewModel @Inject constructor(
     }
 
     suspend fun saveResultToFirestore(result: SafetyCheckResult) {
-        Log.d("SafetyCheck", "========== saveResultToFirestore 시작 ==========")
-
         val today = result.date
         val empNum = result.empNum
+        val currentTime = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            .format(java.util.Date())
 
         // 명시적으로 Map으로 변환
         val dataMap = hashMapOf(
@@ -283,33 +284,30 @@ class SafetyCheckViewModel @Inject constructor(
             "finalSafetyScore" to result.finalSafetyScore,
             "safetyLevel" to result.safetyLevel.name,
             "date" to result.date,
+            "time" to currentTime,
             "timestamp" to result.timestamp,
             "recommendations" to result.recommendations
         )
 
-        Log.d("SafetyCheck", "변환된 dataMap: $dataMap")
-
         try {
-            // 주입받은 firestore 사용
-            Log.d("SafetyCheck", "일별 결과 저장 시작: results/$today/entries/$empNum")
-            val task1 = firestore.collection("results")
+            // 오늘 날짜의 entries 컬렉션에서 해당 사번으로 시작하는 문서 조회
+            val attemptsSnapshot = firestore.collection("results")
                 .document(today)
                 .collection("entries")
-                .document(empNum)
-                .set(dataMap)
+                .whereEqualTo("empNum", empNum)
+                .get()
                 .await()
-            Log.d("SafetyCheck", "일별 결과 저장 완료: $task1")
 
-            Log.d("SafetyCheck", "사용자별 이력 저장 시작: results/$empNum/daily/$today")
-            val task2 = firestore.collection("results")
-                .document(empNum)
-                .collection("daily")
+            val attemptCount = attemptsSnapshot.size() + 1
+            val documentId = "${empNum}_${attemptCount}"  // 예: "001660_1", "001660_2"
+
+            // results/날짜/entries/사번_횟수 경로에 저장
+            firestore.collection("results")
                 .document(today)
+                .collection("entries")
+                .document(documentId)
                 .set(dataMap)
                 .await()
-            Log.d("SafetyCheck", "사용자별 이력 저장 완료: $task2")
-
-            Log.d("SafetyCheck", "========== saveResultToFirestore 완료 ==========")
 
         } catch (e: Exception) {
             Log.e("SafetyCheck", "Firestore 저장 중 에러", e)

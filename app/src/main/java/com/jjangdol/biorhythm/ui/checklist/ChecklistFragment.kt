@@ -93,16 +93,16 @@ class ChecklistFragment : Fragment(R.layout.fragment_checklist) {
             val today = java.time.LocalDate.now().toString() // e.g. "2025-11-08"
 
             try {
-                // Firestore 문서 경로: results/{today}/entries/{empNum}
-                val docRef = Firebase.firestore
+                // Firestore 경로: results/{today}/entries 컬렉션에서 해당 사번으로 시작하는 문서 조회
+                val querySnapshot = Firebase.firestore
                     .collection("results")
                     .document(today)
                     .collection("entries")
-                    .document(empNum)
+                    .whereEqualTo("empNum", empNum)
+                    .get()
+                    .await()
 
-                val snapshot = docRef.get().await()
-
-                if (snapshot.exists()) {
+                if (!querySnapshot.isEmpty) {
                     // 오늘 이미 측정한 데이터 존재
                     showRecheckDialog()
                 }

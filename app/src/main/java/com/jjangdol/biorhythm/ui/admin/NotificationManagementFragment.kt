@@ -692,7 +692,6 @@ class NotificationManagementFragment : Fragment(R.layout.fragment_notification_m
         return if (!empNum.isNullOrEmpty()) empNum else null
     }
 
-    //todo:수정 시 다이얼로그 UI 변경
     private fun showEditNotificationDialog(notification: Notification) {
         val layout = LinearLayout(requireContext()).apply {
             orientation = LinearLayout.VERTICAL

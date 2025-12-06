@@ -92,9 +92,6 @@ abstract class BaseMeasurementFragment : Fragment() {
                 // 앱 설정으로 이동
                 openAppSettings()
             }
-            .setNegativeButton("건너뛰기") { _, _ ->
-                skipMeasurement()
-            }
             .setCancelable(false)
             .show()
     }
@@ -188,20 +185,6 @@ abstract class BaseMeasurementFragment : Fragment() {
             }
         }
         Log.d("BaseMeasurement", "========== onMeasurementComplete 종료 ==========")
-    }
-
-    /**
-     * 측정 건너뛰기
-     */
-    protected fun skipMeasurement() {
-        val result = MeasurementResult(
-            type = measurementType,
-            score = 0f,
-            metadata = mapOf("skipped" to "true")
-        )
-
-        safetyCheckViewModel.addMeasurementResult(result)
-        navigateToNext()
     }
 
     /**

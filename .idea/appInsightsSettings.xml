@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="com.jjangdol.biorhythm" />
-                  <option name="mobileSdkAppId" value="1:287534512164:android:cb0f09a363d22b278b80b1" />
-                  <option name="projectId" value="capstone-biorhythm" />
-                  <option name="projectNumber" value="287534512164" />
+                  <option name="appId" value="PLACEHOLDER" />
+                  <option name="mobileSdkAppId" value="" />
+                  <option name="projectId" value="" />
+                  <option name="projectNumber" value="" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

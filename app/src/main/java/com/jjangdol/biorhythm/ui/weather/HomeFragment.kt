@@ -422,7 +422,6 @@ class HomeFragment : Fragment(R.layout.fragment_weather) {
             android.R.color.holo_orange_light,
             android.R.color.holo_red_light
         )
-        // todo: 이 색상 코드를 삽입해야 로그인 이후에 HomeFragment를 입장한 후에 앱이 강제종료가 안 되는데, 이유는 모르겠음
 
         binding.swipeRefreshLayout.setOnRefreshListener {
             // 새로고침 시 실행할 작업
@@ -946,12 +945,11 @@ class HomeFragment : Fragment(R.layout.fragment_weather) {
             val responseData = result.data as? Map<*, *>
 
             if (responseData != null) {
-                Log.d("WeatherNews", "특보 데이터 수신 성공")
+                val dataMap = responseData["data"] as? Map<*, *>
+                val issued = dataMap?.get("issued") as? List<*>
 
-                val data = responseData["data"] as? List<*>
-
-                if (data != null && data.isNotEmpty()) {
-                    displayWeatherAlerts(data)
+                if (issued != null && issued.isNotEmpty()) {
+                    displayWeatherAlerts(issued)
                 } else {
                     displayNoWeatherAlerts()
                 }
@@ -984,7 +982,7 @@ class HomeFragment : Fragment(R.layout.fragment_weather) {
 
         data.forEach { item ->
             val alertItem = item as? Map<*, *> ?: return@forEach
-            val text = alertItem["text"] as? String ?: return@forEach
+            val title = alertItem["title"] as? String ?: return@forEach
             val date = alertItem["date"]?.toString() ?: return@forEach
 
             val formattedDate = formatAlertDate(date)
@@ -1002,7 +1000,7 @@ class HomeFragment : Fragment(R.layout.fragment_weather) {
             }
 
             val contentTextView = TextView(requireContext()).apply {
-                setText(text)
+                setText(title)
                 textSize = 14f
                 setTextColor(ContextCompat.getColor(requireContext(), R.color.text_primary))
                 setPadding(0, 8, 0, 0)

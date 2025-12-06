@@ -103,11 +103,6 @@ class PupilMeasurementFragment : BaseMeasurementFragment() {
             startMeasurement()
         }
 
-        // todo: 배포 시에는 건너뛰기 항목 모두 제거 예정
-        binding.btnSkip.setOnClickListener {
-            skipMeasurement()
-        }
-
         binding.btnRetry.setOnClickListener {
             resetMeasurement()
             startMeasurement()
@@ -402,39 +397,71 @@ class PupilMeasurementFragment : BaseMeasurementFragment() {
     }
 
     private fun calculateFatigueScore(): Float {
-        val expectedBlinks = 4.25f // 이상적인 깜빡임 수 (15초 기준)
+        // 15초 기준 정상 깜빡임 범위: 3-8회 (분당 12-32회)
+        val minHealthyBlinks = 3f
+        val maxHealthyBlinks = 8f
+        val optimalBlinks = 5f  // 분당 20회 기준
 
-        // 스냅샷 복사본 사용 (동시 수정 방지)
         val blinkSnapshot = blinkData.toList()
         val eyeOpenSnapshot = eyeOpenRatios.toList()
-
         val actualBlinks = blinkSnapshot.size.toFloat()
 
-        // 깜빡임 점수: 이상적인 범위 (7~10) 기준 가우시안 감점 적용
-        val blinkScore = (100 - abs(actualBlinks - expectedBlinks) * 10).coerceIn(0f, 100f)
+        // 깜빡임 횟수 점수 (40%)
+        val blinkScore = when {
+            actualBlinks < minHealthyBlinks -> {
+                // 너무 적음 = 피로 (집중/졸림으로 깜빡임 감소)
+                (actualBlinks / minHealthyBlinks * 60).coerceIn(0f, 60f)
+            }
+            actualBlinks > maxHealthyBlinks -> {
+                // 너무 많음 = 피로/스트레스 (눈 건조, 불편)
+                (100 - (actualBlinks - maxHealthyBlinks) * 15).coerceIn(40f, 100f)
+            }
+            else -> {
+                // 정상 범위: 가우시안 분포
+                100f - abs(actualBlinks - optimalBlinks) * 8
+            }
+        }.coerceIn(0f, 100f)
 
-        // 평균 눈 개방 정도
-        val avgEyeOpen = if (eyeOpenSnapshot.isNotEmpty()) eyeOpenSnapshot.average().toFloat() else 0.5f
+        // 눈 개방도 점수 (35%)
+        val avgEyeOpen = if (eyeOpenSnapshot.isNotEmpty()) {
+            eyeOpenSnapshot.average().toFloat()
+        } else 0.5f
 
-        // 눈 개방 점수: 이상적인 범위 0.85~0.95 중심으로 최고점 부여
-        val idealEyeOpen = 0.9f
-        val eyeOpenScore = (100 - abs(avgEyeOpen - idealEyeOpen) * 200).coerceIn(0f, 100f)
-
-        // 깜빡임 간격의 표준편차 (일관성 점수)
-        val blinkIntervalStdDev = if (blinkSnapshot.size > 1) {
-            val avgInterval = blinkSnapshot.average()
-            val variance = blinkSnapshot.map { (it - avgInterval).let { diff -> diff * diff } }.average()
-            kotlin.math.sqrt(variance).toFloat()
-        } else 0f
-
-        val consistencyScore = when {
-            blinkIntervalStdDev <= 1000 -> 100f
-            blinkIntervalStdDev <= 3000 -> (100f - (blinkIntervalStdDev - 1000) / 20f).coerceIn(0f, 100f)
-            else -> 0f
+        // 피로할수록 눈 개방도 감소 (0.7 이하는 피로 신호)
+        val eyeOpenScore = when {
+            avgEyeOpen >= 0.85f -> 100f  // 매우 좋음
+            avgEyeOpen >= 0.75f -> 80f + (avgEyeOpen - 0.75f) * 200  // 좋음
+            avgEyeOpen >= 0.65f -> 60f + (avgEyeOpen - 0.65f) * 200  // 보통
+            avgEyeOpen >= 0.50f -> 40f + (avgEyeOpen - 0.50f) * 133  // 피로
+            else -> (avgEyeOpen / 0.5f * 40).coerceIn(0f, 40f)  // 매우 피로
         }
 
-        // 가중 평균 계산 (blink 50%, eyeOpen 30%, consistency 20%)
-        val finalScore = (blinkScore * 0.5f + eyeOpenScore * 0.3f + consistencyScore * 0.2f).coerceIn(0f, 100f)
+        // 깜빡임 간격 일관성 (25%)
+        val consistencyScore = if (blinkSnapshot.size > 2) {
+            val intervals = blinkSnapshot
+            val avgInterval = intervals.average()
+
+            // 표준편차 계산
+            val variance = intervals.map { (it - avgInterval).let { d -> d * d } }.average()
+            val stdDev = kotlin.math.sqrt(variance).toFloat()
+
+            // 일관성이 높을수록 건강함 (정상 범위: 1-3초, 표준편차 1초 이내)
+            when {
+                stdDev <= 800 -> 100f  // 매우 일관적
+                stdDev <= 1500 -> 100f - (stdDev - 800) / 7  // 일관적
+                stdDev <= 3000 -> 60f - (stdDev - 1500) / 25  // 보통
+                else -> (60f - (stdDev - 3000) / 50).coerceIn(0f, 60f)  // 불규칙
+            }
+        } else {
+            50f  // 데이터 부족 시 중립 점수
+        }
+
+        // 최종 점수 (가중 평균)
+        val finalScore = (
+                blinkScore * 0.40f +
+                        eyeOpenScore * 0.35f +
+                        consistencyScore * 0.25f
+                ).coerceIn(0f, 100f)
 
         return finalScore
     }

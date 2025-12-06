@@ -3,6 +3,7 @@ package com.jjangdol.biorhythm.ui.admin
 import android.app.DatePickerDialog
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.EditText
 import android.widget.Toast
@@ -20,6 +21,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.firebase.firestore.SetOptions
+import com.jjangdol.biorhythm.model.UserStatistics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -45,7 +47,7 @@ class NewAdminFragment : Fragment(R.layout.fragment_new_admin) {
 
     private var selectedDate: LocalDate = LocalDate.now()
     private var selectedScoreFilter: ScoreFilter = ScoreFilter.ALL
-    private var allResults: List<ChecklistResult> = emptyList() // 캐시된 결과
+    private var allResults: List<ChecklistResult> = emptyList()
 
 
     enum class ScoreFilter {
@@ -67,9 +69,9 @@ class NewAdminFragment : Fragment(R.layout.fragment_new_admin) {
     }
 
     private fun setupRecyclerView() {
-        adminResultsAdapter = AdminResultsAdapter { result ->
-            // 클릭 시 상세 정보 다이얼로그 표시
-            showResultDetailDialog(result)
+        adminResultsAdapter = AdminResultsAdapter { userStats ->
+            // 클릭 시 해당 사용자의 상세 결과 목록 표시
+            showUserDetailDialog(userStats)
         }
 
         binding.recyclerViewResults.apply {
@@ -147,10 +149,10 @@ class NewAdminFragment : Fragment(R.layout.fragment_new_admin) {
                     }
                 } catch (e: CancellationException) {
                     // Job이 취소된 경우는 정상적인 상황이므로 무시
-                    android.util.Log.d("NewAdminFragment", "Data observation cancelled")
                 } catch (e: Exception) {
                     // 실제 에러인 경우만 처리
                     if (isAdded && _binding != null && !requireActivity().isFinishing) {
+                        Log.e("NewAdminFragment", "데이터 로딩 실패", e)
                         Toast.makeText(requireContext(), "데이터 로딩 실패: ${e.message}", Toast.LENGTH_LONG).show()
                         // 에러 시 빈 상태 표시
                         allResults = emptyList()
@@ -161,6 +163,23 @@ class NewAdminFragment : Fragment(R.layout.fragment_new_admin) {
         }
     }
 
+    // ChecklistResult 리스트를 UserStatistics로 변환하는 함수
+    private fun convertToUserStatistics(results: List<ChecklistResult>): List<UserStatistics> {
+        return results
+            .groupBy { it.userId }
+            .map { (userId, userResults) ->
+                UserStatistics(
+                    userId = userId,
+                    userName = userResults.first().name,
+                    safeCount = userResults.count { it.finalSafetyScore >= 70 },
+                    cautionCount = userResults.count { it.finalSafetyScore in 50..69 },
+                    dangerCount = userResults.count { it.finalSafetyScore < 50 }
+                )
+            }
+            .sortedByDescending { it.dangerCount } // 위험 건수가 많은 순으로 정렬
+    }
+
+    // 데이터 로드 및 어댑터 업데이트
     private fun applyFilters() {
         // Fragment가 여전히 활성 상태인지 확인
         if (!isAdded || _binding == null) return
@@ -175,13 +194,14 @@ class NewAdminFragment : Fragment(R.layout.fragment_new_admin) {
         // 통계 업데이트 (전체 결과 기준)
         updateStatistics(allResults)
 
-        // 리스트 업데이트 (ChecklistResult 타입으로)
-        adminResultsAdapter.submitList(filteredResults)
-        binding.tvResultCount.text = "총 ${filteredResults.size}건 (${selectedDate.format(DateTimeFormatter.ofPattern("MM-dd"))})"
+        // UserStatistics로 변환하여 리스트 업데이트
+        val userStatistics = convertToUserStatistics(filteredResults)
+        adminResultsAdapter.submitList(userStatistics)
+        binding.tvResultCount.text = "총 ${userStatistics.size}명 (${selectedDate.format(DateTimeFormatter.ofPattern("MM/dd"))})"
 
         // 빈 상태 처리
         binding.emptyLayout.visibility =
-            if (filteredResults.isEmpty()) View.VISIBLE else View.GONE
+            if (userStatistics.isEmpty()) View.VISIBLE else View.GONE
     }
 
     private fun updateStatistics(results: List<ChecklistResult>) {
@@ -202,7 +222,7 @@ class NewAdminFragment : Fragment(R.layout.fragment_new_admin) {
             requireContext(),
             { _, year, month, dayOfMonth ->
                 selectedDate = LocalDate.of(year, month + 1, dayOfMonth)
-                binding.btnDateFilter.text = selectedDate.format(DateTimeFormatter.ofPattern("MM-dd"))
+                binding.btnDateFilter.text = selectedDate.format(DateTimeFormatter.ofPattern("MM/dd"))
 
                 // 날짜 변경 시 새로운 데이터 로드
                 observeData()
@@ -214,16 +234,76 @@ class NewAdminFragment : Fragment(R.layout.fragment_new_admin) {
         picker.show()
     }
 
+    private fun showUserDetailDialog(userStats: UserStatistics) {
+        // 해당 사용자의 모든 결과 필터링
+        val userResults = allResults.filter { it.userId == userStats.userId }
+            .sortedByDescending { it.timestamp }
+
+        // 카테고리별로 분류
+        val safeResults = userResults.filter { it.finalSafetyScore >= 70 }
+        val cautionResults = userResults.filter { it.finalSafetyScore in 50..69 }
+        val dangerResults = userResults.filter { it.finalSafetyScore < 50 }
+
+        val items = mutableListOf<String>()
+        val resultsList = mutableListOf<ChecklistResult>()
+
+        // 위험 항목 추가
+        if (dangerResults.isNotEmpty()) {
+            items.add("📛 위험 (${dangerResults.size}건)")
+            dangerResults.forEach { result ->
+                items.add("  ${result.time} - ${result.finalSafetyScore}점")
+                resultsList.add(result)
+            }
+        }
+
+        // 주의 항목 추가
+        if (cautionResults.isNotEmpty()) {
+            items.add("⚠️ 주의 (${cautionResults.size}건)")
+            cautionResults.forEach { result ->
+                items.add("  ${result.time} - ${result.finalSafetyScore}점")
+                resultsList.add(result)
+            }
+        }
+
+        // 안전 항목 추가
+        if (safeResults.isNotEmpty()) {
+            items.add("✅ 안전 (${safeResults.size}건)")
+            safeResults.forEach { result ->
+                items.add("  ${result.time} - ${result.finalSafetyScore}점")
+                resultsList.add(result)
+            }
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("${userStats.userName} 상세")
+            .setItems(items.toTypedArray()) { _, position ->
+                // 헤더가 아닌 실제 데이터 항목만 클릭 가능
+                val clickedItem = items[position]
+                if (clickedItem.startsWith("  ")) {
+                    // 해당 결과의 상세 정보 표시
+                    val resultIndex = resultsList.indexOfFirst {
+                        clickedItem.contains(it.time) && clickedItem.contains("${it.finalSafetyScore}점")
+                    }
+                    if (resultIndex >= 0) {
+                        showResultDetailDialog(resultsList[resultIndex])
+                    }
+                }
+            }
+            .setNegativeButton("닫기", null)
+            .show()
+    }
+
     private fun showResultDetailDialog(result: ChecklistResult) {
         val message = buildString {
             appendLine("=== 기본 정보 ===")
             appendLine("이름: ${result.name}")
-            //appendLine("부서: ${result.dept}")
             appendLine("날짜: ${result.date}")
+            appendLine("시간: ${result.time}")
             appendLine()
 
             appendLine("=== 점수 상세 ===")
             appendLine("최종 안전 점수: ${result.finalSafetyScore}점")
+            appendLine("안전 등급: ${result.safetyLevel}")
             appendLine("체크리스트 점수: ${result.checklistScore}점")
             appendLine()
 
@@ -232,9 +312,12 @@ class NewAdminFragment : Fragment(R.layout.fragment_new_admin) {
             appendLine("동공 측정 점수: ${result.pupilScore}점")
             appendLine("손떨림 측정 점수: ${result.tremorScore}점")
 
-            if (result.timestamp != 0L) {
+            if (result.recommendations.isNotEmpty()) {
                 appendLine()
-                appendLine("측정 시간: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(result.timestamp))}")
+                appendLine("=== 권장사항 ===")
+                result.recommendations.forEach { recommendation ->
+                    appendLine("• $recommendation")
+                }
             }
         }
 

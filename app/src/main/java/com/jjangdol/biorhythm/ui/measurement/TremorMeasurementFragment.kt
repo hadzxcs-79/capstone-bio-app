@@ -90,14 +90,12 @@ class TremorMeasurementFragment : BaseMeasurementFragment(),
 
         if (accelerometer == null) {
             binding.tvStatus.text = "가속도 센서를 사용할 수 없습니다"
-            binding.btnSkip.visibility = View.VISIBLE
             binding.btnStart.isEnabled = false
         }
     }
 
     private fun setupUI() {
         binding.btnStart.setOnClickListener { startMeasurement() }
-        binding.btnSkip.setOnClickListener { skipMeasurement() }
         binding.btnRetry.setOnClickListener {
             resetMeasurement()
             startMeasurement()
